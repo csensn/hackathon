@@ -1,39 +1,123 @@
-# Importing libraries
-import pandas as pd
-import numpy as np
-from sklearn.linear_model import LinearRegression
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+from sklearn.ensemble import ExtraTreesRegressor
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Input data files are available in the read-only "../input/" directory
+# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
+
+
+dataset = pd.read_csv(r"C:\Users\nsnar\Downloads\car_data.csv")
+dataset.head()
+dataset.shape
+
+print(dataset['Fuel_Type'].unique())
+print(dataset['Seller_Type'].unique())
+print(dataset['Transmission'].unique())
+print(dataset['Owner'].unique())
+
+#check missing null values
+dataset.isnull().sum()
+dataset.describe()
+dataset.columns
+final_dataset=dataset[['Year', 'Selling_Price', 'Present_Price', 'Kms_Driven',
+       'Fuel_Type', 'Seller_Type', 'Transmission', 'Owner']]
+
+final_dataset['Current_Year']=2020
+final_dataset.head()
+final_dataset['no_of_year']=final_dataset['Current_Year']-final_dataset['Year']
+final_dataset.head()
+
+final_dataset.drop(['Year'],axis=1,inplace=True)
+final_dataset.head()
+final_dataset = pd.get_dummies(final_dataset,drop_first=True)
+final_dataset.head()
+final_dataset.corr()
+sns.pairplot(final_dataset)
+
+
+%matplotlib inline
+corrmat = final_dataset.corr()
+top_corr_features=corrmat.index
+plt.figure(figsize=(15,15))
+
+# plot heat map
+g=sns.heatmap(final_dataset[top_corr_features].corr(),annot=True,cmap="RdYlGn")
+final_dataset.head()
+
+# X is independent features and Y is dependent features
+X=final_dataset.drop('Selling_Price',axis=1)
+Y = final_dataset['Selling_Price']
+
+## feature importance
+model = ExtraTreesRegressor()
+model.fit(X,Y)
+print(model.feature_importances_)
+
+# plot graph of feature importances for better visualization
+feat_importances = pd.Series(model.feature_importances_,index=X.columns)
+feat_importances.nlargest(5).plot(kind='barh')
+plt.show()
+
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, r2_score
+X_train, X_test, Y_train, Y_test=train_test_split(X,Y,test_size=0.2,random_state=10)
 
-# Loading the dataset
-fp= open(r"C:\Users\nsnar\Downloads\car_data.csv", "r")
-df = pd.read_csv(fp)
+X_train.shape
 
-# Preprocessing the data
-df.drop_duplicates(inplace=True)
-df.drop(['Car_Name'], axis=1, inplace=True)
-df['Age'] = 2023 - pd.to_datetime(df['Year']).dt.year
-df.drop(['Year'], axis=1, inplace=True)
-df = pd.get_dummies(df, drop_first=True)
+from sklearn.ensemble import RandomForestRegressor
+rf_random = RandomForestRegressor()
 
-# Splitting the dataset
-X = df.drop(['Selling_Price'], axis=1)
-y = df['Selling_Price']
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+#Hyperparameter tuning in Randomized Search CV
 
-# Training the model
-model = LinearRegression()
-model.fit(X_train, y_train)
+# Number of trees in random forest
+n_estimators = [int(x) for x in np.linspace(start = 100, stop = 1200, num = 12)]
+# Number of features to consider at every split
+max_features = ['auto', 'sqrt']
+# Maximum number of levels in tree
+max_depth = [int(x) for x in np.linspace(5, 30, num = 6)]
+# max_depth.append(None)
+# Minimum number of samples required to split a node
+min_samples_split = [2, 5, 10, 15, 100]
+# Minimum number of samples required at each leaf node
+min_samples_leaf = [1, 2, 5, 10]
 
-# Evaluating the model
-y_pred = model.predict(X_test)
-rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-r2 = r2_score(y_test, y_pred)
-print("Root Mean Squared Error: ", rmse)
-print("R2 Score: ", r2)
+from sklearn.model_selection import RandomizedSearchCV
 
-# Predicting the selling price of a used car
-test_data = np.array([50000, 5, 3, 1, 0, 0, 0, 1, 1, 0]).reshape(1,-1)
-selling_price = model.predict(test_data)
-print("Predicted Selling Price: ", selling_price)
+random_grid = {'n_estimators': n_estimators,
+               'max_features': max_features,
+               'max_depth': max_depth,
+               'min_samples_split': min_samples_split,
+               'min_samples_leaf': min_samples_leaf}
+
+print(random_grid)
+
+# use the random grid to search for best heperparameters
+rf = RandomForestRegressor()
+
+# Random search of parameters, using 3 fold cross validation, 
+# search across 100 different combinations
+rf_random = RandomizedSearchCV(estimator = rf, param_distributions = random_grid,scoring='neg_mean_squared_error', n_iter = 10, cv = 5, verbose=2, random_state=42, n_jobs = 1)
+
+
+# Random search of parameters, using 3 fold cross validation, 
+# search across 100 different combinations
+rf_random = RandomizedSearchCV(estimator = rf, param_distributions = random_grid,scoring='neg_mean_squared_error', n_iter = 10, cv = 5, verbose=2, random_state=42, n_jobs = 1)
+
+rf_random.fit(X_train,Y_train)
+
+predictions = rf_random.predict(X_test)
+
+predictions
+
+sns.distplot(Y_test-predictions)
+
+plt.scatter(Y_test,predictions)
+
+
+warnings.filterwarnings('ignore')
+
+cv = ShuffleSplit(n_splits=5, test_size=0.2,random_state=0)
+cross_val_score(RandomForestRegressor(),X,Y,cv=cv)
+
 
